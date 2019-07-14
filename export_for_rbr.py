@@ -1,3 +1,9 @@
+#TODO select chunks after export
+#TODO weird scene on_update errors when disabling addon?
+#TODO display status messages in the panel
+#TODO labels, texts etc.
+#TODO overall refactoring
+
 bl_info = {
     "name": "Simtraxx - Export for RBR",
     "category": "Object",
