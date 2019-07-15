@@ -35,10 +35,16 @@ class SplitAndExport(bpy.types.Operator):
 
     bl_idname = "object.split_export_rbr"
     bl_label = "Split & Export X"
+    bl_description = "Split & Export selected objects to DirectX files"
     bl_options = {'REGISTER', 'UNDO'}
 
     
     def execute(self, context):
+
+        if len(context.selected_objects) == 0:
+            print( "Nothing selected!")
+            return {"FINISHED"}
+
         Split.execute(self, context)
         ExportX.execute(self, context)
         return {"FINISHED"}
@@ -48,6 +54,7 @@ class ExportX(bpy.types.Operator):
 
     bl_idname = "object.export_x_rbr"
     bl_label = "Export X"
+    bl_description = "Export selected objects to DirectX files"
     bl_options = {'REGISTER', 'UNDO'}
 
     files_exported = 0
@@ -56,16 +63,18 @@ class ExportX(bpy.types.Operator):
     
     def execute(self, context):
 
-        self.props = context.scene.export_for_rbr_properties
+        self.props = context.scene.export_for_rbr_props
         self.objects_to_export = context.selected_objects
         self.files_exported = 0
 
         
+        if len(self.objects_to_export) == 0:
+            print( "Nothing selected!")
+            return {"FINISHED"}
+            
         print( "\nEXPORTING TO X")
         print( "=====================\n")
 
-        if len(self.objects_to_export) == 0:
-            return {"FINISHED"}
 
         
         def getView3D():
@@ -139,9 +148,6 @@ class ExportX(bpy.types.Operator):
                 self.report({'ERROR'}, "Error when saving DirectX file")
                 return False
             
-            # files_exported = files_exported + 1
-            
-            
             self.files_exported += 1
 
             for obj in context.selected_objects:
@@ -152,7 +158,9 @@ class ExportX(bpy.types.Operator):
                 
 
         
-        bpy.ops.object.transform_apply(location = True, scale = True, rotation = True)
+        
+        if self.props.apply_transformations:
+            bpy.ops.object.transform_apply(location = True, scale = True, rotation = True)
 
         view3d = getView3D()
         view3d.pivot_point='BOUNDING_BOX_CENTER'
@@ -174,12 +182,17 @@ class Split(bpy.types.Operator):
     
     bl_idname = "object.split_for_rbr"
     bl_label = "Split"
+    bl_description = "Split selected objects"
     bl_options = {'REGISTER', 'UNDO'}
     
 
     def execute(self, context):
+
+        if len(context.selected_objects) == 0:
+            print( "Nothing selected!")
+            return {"FINISHED"}
     
-        properties = context.scene.export_for_rbr_properties
+        props = context.scene.export_for_rbr_props
         
         def cut_object( obj ):
             #Gets the bounds
@@ -253,8 +266,13 @@ class Split(bpy.types.Operator):
             
             
             bpy.ops.mesh.select_all(action = 'SELECT')                
-            bpy.ops.mesh.remove_doubles()
-            bpy.ops.mesh.delete_loose()
+            
+            if props.remove_doubles:
+                bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
+            
+            if props.delete_loose:
+                bpy.ops.mesh.delete_loose()
+
             bpy.ops.mesh.select_all(action = 'DESELECT')
             
             bpy.ops.object.mode_set(mode="OBJECT")
@@ -273,7 +291,7 @@ class Split(bpy.types.Operator):
                 result = vector.z
             return axis
             
-        # Return true if one of bounds dimension is longer than max_dimension
+        # Return true if one of bounds dimension is longer than max_length
         def is_too_long ( obj ):
             
             bounds = [b[:] for b in obj.bound_box]
@@ -289,16 +307,16 @@ class Split(bpy.types.Operator):
                 # longest = delta_bounds.z
                 
             # return longest
-            if properties.max_dimension == 0:
+            if props.max_length == 0:
                 return False
-            if delta_bounds.x > properties.max_dimension or delta_bounds.y > properties.max_dimension or delta_bounds.z > properties.max_dimension:
+            if delta_bounds.x > props.max_length or delta_bounds.y > props.max_length or delta_bounds.z > props.max_length:
                 return True
         
         def is_too_dense ( obj ):
-            if  properties.max_vertices == 0:
+            if  props.max_vertices == 0:
                 return False
             
-            if len(obj.data.vertices) >=  properties.max_vertices:
+            if len(obj.data.vertices) >=  props.max_vertices:
                 return True
             
             return False
@@ -316,18 +334,26 @@ class Split(bpy.types.Operator):
         
         print( "\nCLEANUP")
         print( "=====================\n")
-        bpy.ops.object.transform_apply(location = True, scale = True, rotation = True)
+
+        if props.apply_transformations:
+            bpy.ops.object.transform_apply(location = True, scale = True, rotation = True)
+        
         bpy.ops.object.mode_set(mode="EDIT")
         bpy.ops.mesh.reveal()
         bpy.ops.mesh.select_all(action = 'SELECT')
-        bpy.ops.mesh.remove_doubles()
-        bpy.ops.mesh.delete_loose()
+
+        if props.remove_doubles:
+            bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
+        
+        if props.delete_loose:
+            bpy.ops.mesh.delete_loose()
+                
         bpy.ops.mesh.select_all(action = 'DESELECT')        
         bpy.ops.object.mode_set(mode="OBJECT")
         
         obj.update_from_editmode()
         
-        if  properties.separate_by_material:
+        if  props.separate_by_material:
             print("\nSeparating by material ...")
             bpy.ops.mesh.separate(type='MATERIAL')
             print("Done.")
@@ -373,78 +399,124 @@ class ExportForRBR_Panel(bpy.types.Panel):
 
     def draw(self, context):
         layout =  self.layout
+        layout.label("Splitting Options:", icon="FULLSCREEN_ENTER")
         
         box = layout.box()
-
-        row = box.row()
-        row.label("Splitting Limits:")
-
         row = box.row(align=True)
-        row.prop(context.scene.export_for_rbr_properties, "max_vertices", text="Vertices")
-        row.prop(context.scene.export_for_rbr_properties, "max_dimension", text="Length")
-        
-        row = box.row()
-        
+        row.prop(context.scene.export_for_rbr_props, "max_vertices", text="Vertex Count")
+        row.prop(context.scene.export_for_rbr_props, "max_length", text="Length")
+
+
+        layout.row().separator()
+
+
+        layout.label("Cleanup Options:", icon="OUTLINER_DATA_LAMP")
+
         box = layout.box()
         
         row = box.row()
-        row.label("Export Options:")
-
-        row = box.row()
-        row.prop(context.scene.export_for_rbr_properties, "export_mesh_type", text="Mesh Type", expand=True)
-
-        row = box.row()
-        row.prop(context.scene.export_for_rbr_properties, "max_vertices_x", text="Vertices per X")
-
-        row = box.row()
-        row.prop(context.scene.export_for_rbr_properties, "export_basename", text="File Name")
-
-        row = box.row()
-        row.prop(context.scene.export_for_rbr_properties, "export_path", text="Output Folder")
+        row.prop(context.scene.export_for_rbr_props, "apply_transformations", text="Apply Transformations")
         
+        row = box.row()
+        row.prop(context.scene.export_for_rbr_props, "delete_loose", text="Delete Loose")
+        
+        row = box.row()
+        row.prop(context.scene.export_for_rbr_props, "remove_doubles", text="Remove Doubles")
+        
+        if context.scene.export_for_rbr_props.remove_doubles:
+            row.prop(context.scene.export_for_rbr_props, "remove_doubles_threshold", text="Distance", slider=True)
+        
+
+        layout.row().separator()
+        
+        
+        layout.label("Export Options:", icon="EXPORT")
+
+        box = layout.box()
+        row = box.row()
+        row.prop(context.scene.export_for_rbr_props, "export_mesh_type", text="Mesh Type")
+
+
+        row = box.row()
+        row.label("Vertex Count per File:")
+        row.prop(context.scene.export_for_rbr_props, "max_vertices_x", text="")
+
+        row = box.row()
+        row.prop(context.scene.export_for_rbr_props, "export_basename", text="File Name")
+
+        row = box.row()
+        row.prop(context.scene.export_for_rbr_props, "export_path", text="Output Folder")
+        
+
+        layout.row().separator()
+        
+
         row = layout.row()
         row.scale_y = 2.0
-        row.operator("object.split_export_rbr", icon="EXPORT")
+        row.operator("object.split_export_rbr", icon="AUTO")
         
         row = layout.row(align=True)
-        # split = row.split(percentage=0.7, align=True)
-        row.operator("object.split_for_rbr", icon="UV_ISLANDSEL")
+        row.operator("object.split_for_rbr", icon="FULLSCREEN_ENTER")
         row.operator("object.export_x_rbr",icon="EXPORT")
-        
+
 
 class ExportForRBR_Properties(PropertyGroup):
 
+
+    remove_doubles = BoolProperty(
+        default=True,
+        description="This will double all the removes"
+    )
+    remove_doubles_threshold = FloatProperty(
+        min=0.0001,
+        max=1,
+        default=0.05,
+        unit='LENGTH',
+        description="Vertices within the distance will be merged"
+    )
+    delete_loose = BoolProperty(
+        default=True,
+        description="This will enable or disable the checkbox"
+    )
+    apply_transformations = BoolProperty(
+        default=True,
+        description="Applies position, rotation and scale (makes no sense to disable it as it will cause wrong transformation in RBR editor... but whatever!"
+    )
     max_vertices = IntProperty(
         min=0,
-        default=25000
+        default=25000,
+        description="Maximum vertices per chunk - RBR editor can only import files with meshes consisting of < 30 000 vertices"
     )
-    max_dimension = IntProperty(
+    max_length = FloatProperty(
         min=0,
-        default=200
+        default=200,
+        unit='LENGTH',
+        description="Meshes will be splitted if they are longer than the given distance (usually 200-500m is fine for RBR).\n(Too long meshes won't display in game)"
     )
     separate_by_material = BoolProperty(
         default=True
     )
-
     max_vertices_x = IntProperty(
         min=0,
-        default=800000
+        default=800000,
+        description="Maximum vertices per one DirectX file (to keep the filesize below the limit for imported .x into RBR editor)"
     )
-
     export_mesh_type = EnumProperty(
-        items = (('0','General & Ground Mesh','', "WORLD_DATA", 0),('1','Collision Mesh','', "GRID", 1))
+        items = (('0','General & Ground Mesh','', "WORLD_DATA", 0),('1','Collision Mesh','', "WIRE", 1)),
+        description = "Type of the exported mesh - general & ground mesh will be rotated & mirrored, so it imports correctly into RBR editor\n"
     )
     export_path = StringProperty(
         name="",
-        description="Path to Directory",
+        description="Target folder for exported DirectX files",
         default="//",
         maxlen=2048,
-        subtype='DIR_PATH')
-    
+        subtype='DIR_PATH'
+    )
     export_basename = StringProperty(
         name="",
-        description="Name of the file",
-        maxlen=1024)
+        description="Base name for exported DirectX files",
+        maxlen=1024
+    )
     
 def getDefaultExportBaseName():
     try:
@@ -459,20 +531,20 @@ def getDefaultExportBaseName():
 
 @persistent
 def on_scene_update(scene):
-    if scene.export_for_rbr_properties.export_basename == "":
-        scene.export_for_rbr_properties.export_basename = getDefaultExportBaseName()
+    if scene.export_for_rbr_props.export_basename == "":
+        scene.export_for_rbr_props.export_basename = getDefaultExportBaseName()
     
 
 def register():
     bpy.utils.register_module(__name__)
-    bpy.types.Scene.export_for_rbr_properties = PointerProperty(type=ExportForRBR_Properties)
+    bpy.types.Scene.export_for_rbr_props = PointerProperty(type=ExportForRBR_Properties)
     bpy.app.handlers.scene_update_pre.append(on_scene_update)
 
 
 def unregister():
     bpy.app.handlers.scene_update_pre.remove(on_scene_update)
     bpy.utils.unregister_module(__name__)
-    del bpy.types.Scene.export_for_rbr_properties
+    del bpy.types.Scene.export_for_rbr_props
 
 if __name__ == "__main__":
     register()
