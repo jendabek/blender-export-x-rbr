@@ -245,7 +245,7 @@ class Split(bpy.types.Operator):
             #Check that will separate something
             result = True
             
-            if selected_faces_count > 1:
+            if selected_faces_count > 0 and len(obj.data.polygons) > 1:
                 bpy.ops.mesh.separate(type='SELECTED') 
                 
             else:
