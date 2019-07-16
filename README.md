@@ -6,7 +6,7 @@ This Blender 2.79 addon prepares and exports the mesh so it can be imported stra
 - cleans the mesh (reveal hidden vertices, remove doubles, delete loose)
 - applies transformations
 - separates by material
-- splits into chunks using the user settings (by max. vertex count and max. length)
+- splits the mesh into chunks using the user settings (by max. vertex count and max. length)
 - rotates & mirrors the model as necessary (in case of exporting General / Ground Mesh)
 - exports to X (using the appropriate DirectX exporter settings)
 - divides the export to multiple .x files based on the max. vertex count per file settings (to avoid crashes on import)
