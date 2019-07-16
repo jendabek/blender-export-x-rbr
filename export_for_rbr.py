@@ -1,8 +1,8 @@
 #TODO select chunks after export
-#TODO weird scene on_update errors when disabling addon?
+#TODO try different axis before giving up the slicing
 #TODO display status messages in the panel
-#TODO labels, texts etc.
 #TODO overall refactoring
+#TODO remember and display recent directories for export
 
 bl_info = {
     "name": "Simtraxx - Export for RBR",
@@ -71,7 +71,7 @@ class ExportX(bpy.types.Operator):
         if len(self.objects_to_export) == 0:
             print( "Nothing selected!")
             return {"FINISHED"}
-            
+
         print( "\nEXPORTING TO X")
         print( "=====================\n")
 
@@ -185,7 +185,6 @@ class Split(bpy.types.Operator):
     bl_description = "Split selected objects"
     bl_options = {'REGISTER', 'UNDO'}
     
-
     def execute(self, context):
 
         if len(context.selected_objects) == 0:
@@ -254,28 +253,29 @@ class Split(bpy.types.Operator):
             print( "\nSplitting Along Axis: " + str( axis ) )
             print( "Verts to separate: " + str( selected_verts_count ) + "/" + str( len( obj.data.vertices ) ) )
             print( "Polygons to separate:" + str(selected_faces_count))
-            
+
             #Check that will separate something
             result = True
             
             if selected_faces_count > 0 and len(obj.data.polygons) > 1:
+                # bpy.ops.mesh.select_mode(type="FACE")
                 bpy.ops.mesh.separate(type='SELECTED') 
                 
             else:
                 result = False
             
-            
             bpy.ops.mesh.select_all(action = 'SELECT')                
             
-            if props.remove_doubles:
-                bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
+            # if props.remove_doubles:
+            #     bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
             
-            if props.delete_loose:
-                bpy.ops.mesh.delete_loose()
+            # if props.delete_loose:
+            #     bpy.ops.mesh.delete_loose()
 
             bpy.ops.mesh.select_all(action = 'DESELECT')
             
             bpy.ops.object.mode_set(mode="OBJECT")
+
             return result
             
          # Get the axis corresponding to the largest dimension
@@ -326,12 +326,7 @@ class Split(bpy.types.Operator):
         
         obj =  bpy.context.scene.objects.active
         
-        if obj == None:
-            print ("No object selected!")
-            return {'FINISHED'}
-        
         #Preparing & cleaning mesh
-        
         print( "\nCLEANUP")
         print( "=====================\n")
 
@@ -372,15 +367,16 @@ class Split(bpy.types.Operator):
 
             #Get all objects that have more than the wanted vertex amount
             for obj in [x for x in bpy.context.selected_objects if is_too_dense(x) or is_too_long(x)]:
-                chunks_to_process = chunks_to_process + 1
+                chunks_to_process += 1
                 if cut_object( obj ):
                     found = True
             iteration += 1            
             print( "Iteration: " + str( iteration ) + "   Objects: " + str( len( bpy.context.selected_objects ) ) )
 
-        print("\nFailed chunks: " + str(chunks_to_process))
         print( "\n==========================")
         print("SPLITTING FINISHED in: " + str( time.time() - start_time ) )
+        print("\nImperfect chunks: " + str(chunks_to_process))
+
         print( "==========================\n")
         
         return {'FINISHED'}
@@ -503,6 +499,7 @@ class ExportForRBR_Properties(PropertyGroup):
     )
     export_mesh_type = EnumProperty(
         items = (('0','General & Ground Mesh','', "WORLD_DATA", 0),('1','Collision Mesh','', "WIRE", 1)),
+        name="RBR Mesh Type",
         description = "Type of the exported mesh - general & ground mesh will be rotated & mirrored, so it imports correctly into RBR editor\n"
     )
     export_path = StringProperty(
