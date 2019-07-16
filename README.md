@@ -1,6 +1,6 @@
 # Blender Export X for Richard Burns Rally
 RBR editor needs imported mesh to meet many requirements, otherwise the model can't be imported without errors.
-This Blender 2.79 addon prepares and exports the mesh so it can be imported right away, without any manual fixes.
+This Blender 2.79 addon prepares and exports the mesh so it can be imported straight away, without any manual fixes.
 
 ## What does it do:
 - mesh cleaning (reveal hidden vertices, remove doubles, delete loose)
