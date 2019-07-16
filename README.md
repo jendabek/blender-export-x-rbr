@@ -1,4 +1,4 @@
-# Blender Export X for Richard Burns Rally
+# Blender Export X for Richard Burns Rally editor
 RBR editor needs imported mesh to meet many requirements, otherwise the model can't be imported without errors.
 This Blender 2.79 addon prepares and exports the mesh so it can be imported straight away, without any manual fixes.
 
