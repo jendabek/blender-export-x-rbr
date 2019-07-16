@@ -18,3 +18,5 @@ This Blender 2.79 addon prepares and exports the mesh so it can be imported stra
   - max. vertex count per chunk: 25 000
   - max. length of chunk: 200 (meters)
   - max. vertex count per .x file: 800 000 (even 1M should be OK, you just need to stay below 300MB to avoid crashes on import, ideally around 260MB)
+  
+  [[![](https://www.paypalobjects.com/en_US/i/btn/btn_donateCC_LG.gif)](https://www.paypal.com/cgi-bin/webscr?cmd=_donations&business=35AZKW44A96QQ&item_name=Particles+Density+-+Blender+Addon&currency_code=CZK&source=url)
