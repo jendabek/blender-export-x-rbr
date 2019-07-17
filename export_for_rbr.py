@@ -1,4 +1,4 @@
-#TODO select chunks after export
+#TODO select chunks after export, revert the transformation
 #TODO try different axis before giving up the slicing
 #TODO display status messages in the panel
 #TODO overall refactoring
@@ -117,7 +117,14 @@ class ExportX(bpy.types.Operator):
             if self.props.export_basename == "":
                 self.props.export_basename = getDefaultExportBaseName()
 
-            filePath = os.path.join(bpy.path.abspath(self.props.export_path), self.props.export_basename + "-" + str(self.files_exported + 1) + ".x")
+            
+            
+            basename = self.props.export_basename
+            if self.props.export_mesh_type == "1":
+                basename += "-col"
+
+
+            filePath = os.path.join(bpy.path.abspath(self.props.export_path), basename + "-" + str(self.files_exported + 1) + ".x")
             
             try:
                 bpy.ops.export_scene.x(
@@ -508,7 +515,7 @@ class ExportForRBR_Properties(PropertyGroup):
     )
     max_vertices_x = IntProperty(
         min=0,
-        default=800000,
+        default=400000,
         description="Maximum vertices per one DirectX file (to keep the filesize below the limit for imported .x into RBR editor)"
     )
     export_mesh_type = EnumProperty(
