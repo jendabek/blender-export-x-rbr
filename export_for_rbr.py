@@ -258,6 +258,7 @@ class Split(bpy.types.Operator):
             result = True
             
             if selected_faces_count > 0 and len(obj.data.polygons) > 1:
+                print("\nSEPARATING " + str(selected_verts_count) + " vertices...")
                 # bpy.ops.mesh.select_mode(type="FACE")
                 bpy.ops.mesh.separate(type='SELECTED') 
                 
@@ -266,11 +267,15 @@ class Split(bpy.types.Operator):
             
             bpy.ops.mesh.select_all(action = 'SELECT')                
             
-            # if props.remove_doubles:
-            #     bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
+            print("\nCLEANING...")
+
+            bpy.ops.mesh.reveal()
+
+            if props.remove_doubles:
+                bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
             
-            # if props.delete_loose:
-            #     bpy.ops.mesh.delete_loose()
+            if props.delete_loose:
+                bpy.ops.mesh.delete_loose()
 
             bpy.ops.mesh.select_all(action = 'DESELECT')
             
@@ -324,35 +329,39 @@ class Split(bpy.types.Operator):
         
         start_time = time.time()
         
-        obj =  bpy.context.scene.objects.active
         
-        #Preparing & cleaning mesh
+        #Preparing & cleaning meshes
         print( "\nCLEANUP")
         print( "=====================\n")
 
-        if props.apply_transformations:
-            bpy.ops.object.transform_apply(location = True, scale = True, rotation = True)
-        
-        bpy.ops.object.mode_set(mode="EDIT")
-        bpy.ops.mesh.reveal()
-        bpy.ops.mesh.select_all(action = 'SELECT')
+        selected_objs = bpy.context.selected_objects
+        for obj in selected_objs:
 
-        if props.remove_doubles:
-            bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
+            bpy.context.scene.objects.active = obj
+
+            if props.apply_transformations:
+                bpy.ops.object.transform_apply(location = True, scale = True, rotation = True)
+            
+            bpy.ops.object.mode_set(mode="EDIT")
+            bpy.ops.mesh.reveal()
+            bpy.ops.mesh.select_all(action = 'SELECT')
+
+            if props.remove_doubles:
+                bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
+            
+            if props.delete_loose:
+                bpy.ops.mesh.delete_loose()
+                    
+            bpy.ops.mesh.select_all(action = 'DESELECT')
+            bpy.ops.object.mode_set(mode="OBJECT")
+            
+            obj.update_from_editmode()
         
-        if props.delete_loose:
-            bpy.ops.mesh.delete_loose()
-                
-        bpy.ops.mesh.select_all(action = 'DESELECT')        
-        bpy.ops.object.mode_set(mode="OBJECT")
+            if props.separate_by_material:
+                print("\nSeparating by material ...")
+                bpy.ops.mesh.separate(type='MATERIAL')
         
-        obj.update_from_editmode()
-        
-        if  props.separate_by_material:
-            print("\nSeparating by material ...")
-            bpy.ops.mesh.separate(type='MATERIAL')
-            print("Done.")
-        
+        print("Done.")
         
         print( "\nSPLITTING")
         print( "=====================")
