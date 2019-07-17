@@ -69,7 +69,12 @@ class ExportX(bpy.types.Operator):
 
         
         if len(self.objects_to_export) == 0:
-            print( "Nothing selected!")
+            self.report({'ERROR'}, "No object selected!")
+            return {"FINISHED"}
+        
+        # only 1 object for collision mesh
+        if self.props.export_mesh_type == "1" and len(self.objects_to_export) > 1:
+            self.report({'ERROR'}, "You need to select single object to export as Collision Mesh")
             return {"FINISHED"}
 
         print( "\nEXPORTING TO X")
@@ -95,7 +100,7 @@ class ExportX(bpy.types.Operator):
 
             for obj in self.objects_to_export:
                 vertex_count += len(obj.data.vertices)
-                if self.props.max_vertices_x == 0 or vertex_count < self.props.max_vertices_x or obj == self.objects_to_export[-1]:
+                if self.props.max_vertices_x == 0 or self.props.export_mesh_type == "1" or vertex_count < self.props.max_vertices_x or obj == self.objects_to_export[-1]:
                     obj.select = True
                 
             # Transform for General mesh & Ground
@@ -119,12 +124,22 @@ class ExportX(bpy.types.Operator):
 
             
             
-            basename = self.props.export_basename
+            filename = self.props.export_basename
+            
+            # collision mesh
             if self.props.export_mesh_type == "1":
-                basename += "-col"
+                filename += "-col"
+                ExportVertexColors = False
+            
+            # general & ground mesh
+            else:
+                filename += "-" + str(self.files_exported + 1)
+                ExportVertexColors = True
+            
+            
+            filename += ".x"
 
-
-            filePath = os.path.join(bpy.path.abspath(self.props.export_path), basename + "-" + str(self.files_exported + 1) + ".x")
+            filePath = os.path.join(bpy.path.abspath(self.props.export_path), filename)
             
             try:
                 bpy.ops.export_scene.x(
@@ -138,7 +153,7 @@ class ExportX(bpy.types.Operator):
                     ExportUVCoordinates = True,
                     ExportMaterials = True,
                     ExportActiveImageMaterials = False,
-                    ExportVertexColors = True,
+                    ExportVertexColors = ExportVertexColors,
                     ExportSkinWeights = False,
                     ApplyModifiers = False,
                     ExportArmatureBones = False,
@@ -152,7 +167,7 @@ class ExportX(bpy.types.Operator):
                 )
             except:
                 print("Error during exporting to X")
-                self.report({'ERROR'}, "Error when saving DirectX file")
+                self.report({'ERROR'}, "Error when saving DirectX file, check the path!")
                 return False
             
             self.files_exported += 1
@@ -163,9 +178,6 @@ class ExportX(bpy.types.Operator):
             if self.objects_to_export:
                 exportChunks()
                 
-
-        
-        
         if self.props.apply_transformations:
             bpy.ops.object.transform_apply(location = True, scale = True, rotation = True)
 
@@ -175,12 +187,15 @@ class ExportX(bpy.types.Operator):
 
         exportChunks()
 
+        bpy.ops.object.rotation_clear()
+        bpy.ops.object.scale_clear()
+
         print( "\n==========================")
         print("COMPLETE - files exported: " + str(self.files_exported))
         print( "==========================")
         # self.report({'INFO'}, "Files Exported: " + str(self.files_exported))
 
-        bpy.ops.object.select_all(action="DESELECT")
+        # bpy.ops.object.select_all(action="DESELECT")
 
         return {'FINISHED'}
 
@@ -453,10 +468,11 @@ class ExportForRBR_Panel(bpy.types.Panel):
         row.prop(context.scene.export_for_rbr_props, "export_mesh_type", text="Mesh Type")
 
 
-        row = box.row()
-        row.label("Vertex Count per File:")
-        row.prop(context.scene.export_for_rbr_props, "max_vertices_x", text="")
-
+        if context.scene.export_for_rbr_props.export_mesh_type == "0":
+            row = box.row()
+            row.label("Vertex Count per File:")
+            row.prop(context.scene.export_for_rbr_props, "max_vertices_x", text="")
+        
         row = box.row()
         row.prop(context.scene.export_for_rbr_props, "export_basename", text="File Name")
 
@@ -469,11 +485,20 @@ class ExportForRBR_Panel(bpy.types.Panel):
 
         row = layout.row()
         row.scale_y = 2.0
-        row.operator("object.split_export_rbr", icon="AUTO")
+
+        if context.scene.export_for_rbr_props.export_mesh_type == "0":
+
+            row.operator("object.split_export_rbr", icon="AUTO")
+            
+            row = layout.row(align=True)
+            row.operator("object.split_for_rbr", icon="FULLSCREEN_ENTER")
         
-        row = layout.row(align=True)
-        row.operator("object.split_for_rbr", icon="FULLSCREEN_ENTER")
-        row.operator("object.export_x_rbr",icon="EXPORT")
+            row.operator("object.export_x_rbr", icon="EXPORT")
+
+        elif context.scene.export_for_rbr_props.export_mesh_type == "1":
+
+            row.operator("object.export_x_rbr", icon="EXPORT")
+            
 
 
 class ExportForRBR_Properties(PropertyGroup):
