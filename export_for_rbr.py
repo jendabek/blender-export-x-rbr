@@ -419,9 +419,13 @@ class ExportForRBR_Panel(bpy.types.Panel):
 
         box = layout.box()
         
-        row = box.row()
-        row.prop(context.scene.export_for_rbr_props, "apply_transformations", text="Apply Transformations")
         
+        row = box.row()
+        row.prop(context.scene.export_for_rbr_props, "apply_transformations", text="Apply Transformation")
+
+        row = box.row()
+        row.prop(context.scene.export_for_rbr_props, "separate_by_material", text="Separate by Material")
+
         row = box.row()
         row.prop(context.scene.export_for_rbr_props, "delete_loose", text="Delete Loose")
         
@@ -499,7 +503,8 @@ class ExportForRBR_Properties(PropertyGroup):
         description="Meshes will be splitted if they are longer than the given distance (usually 200-500m is fine for RBR).\n(Too long meshes won't display in game)"
     )
     separate_by_material = BoolProperty(
-        default=True
+        default=True,
+        description="Splits the selected meshes by material - no reason to uncheck it as RBR can work only with 1 material per object"
     )
     max_vertices_x = IntProperty(
         min=0,
