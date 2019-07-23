@@ -422,25 +422,22 @@ class ExportForRBR_Panel(bpy.types.Panel):
     
     @classmethod
     def poll(cls, context):
-        return context.active_object is not None
+        return bpy.context.selected_objects and type(context.active_object.data) == bpy.types.Mesh
 
     def draw(self, context):
         layout =  self.layout
-        layout.label("Splitting Options:", icon="FULLSCREEN_ENTER")
+        layout.label("Splitting Options:", icon="MOD_DECIM")
         
         box = layout.box()
         row = box.row(align=True)
         row.prop(context.scene.export_for_rbr_props, "max_vertices", text="Vertex Count")
         row.prop(context.scene.export_for_rbr_props, "max_length", text="Length")
 
-
         layout.row().separator()
 
-
-        layout.label("Cleanup Options:", icon="OUTLINER_DATA_LAMP")
+        layout.label("Cleanup Options:", icon="SCRIPT")
 
         box = layout.box()
-        
         
         row = box.row()
         row.prop(context.scene.export_for_rbr_props, "apply_transformations", text="Apply Transformation")
@@ -491,7 +488,7 @@ class ExportForRBR_Panel(bpy.types.Panel):
             row.operator("object.split_export_rbr", icon="AUTO")
             
             row = layout.row(align=True)
-            row.operator("object.split_for_rbr", icon="FULLSCREEN_ENTER")
+            row.operator("object.split_for_rbr", icon="MOD_DECIM")
         
             row.operator("object.export_x_rbr", icon="EXPORT")
 
