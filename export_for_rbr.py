@@ -1,3 +1,4 @@
+#TODO name files automatically based on the objects name
 #TODO select chunks after export, revert the transformation
 #TODO try different axis before giving up the slicing
 #TODO display status messages in the panel
