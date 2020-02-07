@@ -3,6 +3,8 @@
 #TODO display status messages in the panel
 #TODO overall refactoring
 #TODO remember and display recent directories for export
+#TODO add scenery to the mesh type selection
+#TODO cancel when mesh has a modifier assigned
 
 bl_info = {
     "name": "Simtraxx - Export for RBR",
@@ -40,14 +42,11 @@ class SplitAndExport(bpy.types.Operator):
 
     
     def execute(self, context):
-
-        if len(context.selected_objects) == 0:
-            print( "Nothing selected!")
-            return {"FINISHED"}
-
-        Split.execute(self, context)
-        ExportX.execute(self, context)
-        return {"FINISHED"}
+ 
+        if Split.execute(self, context) == {'FINISHED'}:
+            if ExportX.execute(self, context) == {'FINISHED'}:
+                return {'FINISHED'}
+        return {'CANCELLED'}
 
 
 class ExportX(bpy.types.Operator):
@@ -63,23 +62,23 @@ class ExportX(bpy.types.Operator):
     
     def execute(self, context):
 
+
+        if len(context.selected_objects) == 0:
+            self.report({'ERROR'}, "No object selected!")
+            return {'CANCELLED'}
+       
+        # no modifiers allowed
+        for obj in context.selected_objects:
+            if len(obj.modifiers) > 0:
+                self.report({'ERROR'}, "Apply modifiers first")
+                return {'CANCELLED'}
         self.props = context.scene.export_for_rbr_props
         self.objects_to_export = context.selected_objects
         self.files_exported = 0
 
-        
-        if len(self.objects_to_export) == 0:
-            self.report({'ERROR'}, "No object selected!")
-            return {"FINISHED"}
-        
-        # only 1 object for collision mesh
-        if self.props.export_mesh_type == "1" and len(self.objects_to_export) > 1:
-            self.report({'ERROR'}, "You need to select single object to export as Collision Mesh")
-            return {"FINISHED"}
-
+       
         print( "\nEXPORTING TO X")
         print( "=====================\n")
-
 
         
         def getView3D():
@@ -210,8 +209,20 @@ class Split(bpy.types.Operator):
     def execute(self, context):
 
         if len(context.selected_objects) == 0:
-            print( "Nothing selected!")
-            return {"FINISHED"}
+            self.report({'ERROR'}, "No object selected!")
+            return {'CANCELLED'}
+        
+               
+         
+        # only 1 selected object allowed
+        if len(context.selected_objects) > 1:
+            self.report({'ERROR'}, "Select single object")
+            return {'CANCELLED'}
+        
+        # no modifiers allowed
+        if len(context.selected_objects[0].modifiers) > 0:
+            self.report({'ERROR'}, "Apply modifiers first")
+            return {'CANCELLED'}
     
         props = context.scene.export_for_rbr_props
         
@@ -289,15 +300,15 @@ class Split(bpy.types.Operator):
             
             bpy.ops.mesh.select_all(action = 'SELECT')                
             
-            print("\nCLEANING...")
+            # print("\nCLEANING...")
 
-            bpy.ops.mesh.reveal()
+            # bpy.ops.mesh.reveal()
 
-            if props.remove_doubles:
-                bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
+            # if props.remove_doubles:
+            #     bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
             
-            if props.delete_loose:
-                bpy.ops.mesh.delete_loose()
+            # if props.delete_loose:
+            #     bpy.ops.mesh.delete_loose()
 
             bpy.ops.mesh.select_all(action = 'DESELECT')
             
