@@ -183,7 +183,7 @@ class ExportX(bpy.types.Operator):
                 )
             except:
                 print("Error during exporting to X")
-                self.report({'ERROR'}, "Error when saving DirectX file, check the path!")
+                self.report({'ERROR'}, "Error when saving DirectX file, check you have the DirectX addon enabled and your output path is correct!")
                 return False
             
             self.files_exported += 1
