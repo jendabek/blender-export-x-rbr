@@ -1,14 +1,12 @@
-#TODO name files automatically based on the objects name
-#TODO select chunks after export, revert the transformation
+#TODO detect impossible splitting and enlarge the max_distance in each iteration, then give up
 #TODO try different axis before giving up the slicing
 #TODO display status messages in the panel
 #TODO overall refactoring
 #TODO remember and display recent directories for export
 #TODO add scenery to the mesh type selection
-#TODO cancel when mesh has a modifier assigned
 
 bl_info = {
-    "name": "Simtraxx - Export for RBR",
+    "name": "Export X for RBR",
     "category": "Object",
     "location": "Properties -> Object"
 }
@@ -34,16 +32,33 @@ from bpy.types import (Panel,
                          )
 from bpy.app.handlers import persistent
 
+SCENERY_MAX_VERTICES = 7000
+SCENERY_MAX_VERTICES_X = 7000
+SCENERY_MAX_LENGTH = 0
+
+GENERAL_MAX_VERTICES = 25000
+GENERAL_MAX_VERTICES_X = 400000
+GENERAL_MAX_LENGTH = 300
+
 class SplitAndExport(bpy.types.Operator):
 
     bl_idname = "object.split_export_rbr"
     bl_label = "Split & Export X"
     bl_description = "Split & Export selected objects to DirectX files"
     bl_options = {'REGISTER', 'UNDO'}
+    
+    props = None
 
     
     def execute(self, context):
  
+        self.props = context.scene.export_for_rbr_props
+        
+        eval("self.props.export_basename_" + self.props.export_mesh_type).strip()
+        if eval("self.props.export_basename_" + self.props.export_mesh_type) == "":
+            self.report({'ERROR'}, "Enter the name for the exported file")
+            return {'CANCELLED'}
+            
         if Split.execute(self, context) == {'FINISHED'}:
             if ExportX.execute(self, context) == {'FINISHED'}:
                 return {'FINISHED'}
@@ -63,6 +78,9 @@ class ExportX(bpy.types.Operator):
     
     def execute(self, context):
 
+        self.props = context.scene.export_for_rbr_props
+        self.objects_to_export = context.selected_objects
+        self.files_exported = 0
 
         if len(context.selected_objects) == 0:
             self.report({'ERROR'}, "No object selected!")
@@ -73,11 +91,12 @@ class ExportX(bpy.types.Operator):
             if len(obj.modifiers) > 0:
                 self.report({'ERROR'}, "Apply modifiers first")
                 return {'CANCELLED'}
-        self.props = context.scene.export_for_rbr_props
-        self.objects_to_export = context.selected_objects
-        self.files_exported = 0
-
-       
+                
+        eval("self.props.export_basename_" + self.props.export_mesh_type).strip()
+        if eval("self.props.export_basename_" + self.props.export_mesh_type) == "":
+            self.report({'ERROR'}, "Enter the name for the exported file")
+            return {'CANCELLED'}
+            
         print( "\nEXPORTING TO X")
         print( "=====================\n")
 
@@ -100,11 +119,16 @@ class ExportX(bpy.types.Operator):
 
             for obj in self.objects_to_export:
                 vertex_count += len(obj.data.vertices)
-                if self.props.max_vertices_x == 0 or self.props.export_mesh_type == "1" or vertex_count < self.props.max_vertices_x or obj == self.objects_to_export[-1]:
-                    obj.select = True
+                
+                if self.props.export_mesh_type == "scenery":
+                    if vertex_count <= SCENERY_MAX_VERTICES_X:
+                        obj.select = True
+                else:
+                    if self.props.export_mesh_type == "collision" or vertex_count < GENERAL_MAX_VERTICES_X or obj == self.objects_to_export[-1]:
+                        obj.select = True
                 
             # Transform for General mesh & Ground
-            if self.props.export_mesh_type == "0":
+            if self.props.export_mesh_type == "general" or self.props.export_mesh_type == "scenery":
                 bpy.ops.transform.mirror(
                     constraint_axis=(False, False, True),
                     constraint_orientation='GLOBAL',
@@ -117,25 +141,17 @@ class ExportX(bpy.types.Operator):
                     proportional='DISABLED'
                 )
             
-
-            self.props.export_basename.strip()
-            if self.props.export_basename == "":
-                self.props.export_basename = getDefaultExportBaseName()
-
             
-            
-            filename = self.props.export_basename
+            filename = eval("self.props.export_basename_" + self.props.export_mesh_type)
+            ExportVertexColors = True
             
             # collision mesh
-            if self.props.export_mesh_type == "1":
-                filename += "-col"
+            if self.props.export_mesh_type == "collision":
                 ExportVertexColors = False
             
-            # general & ground mesh
-            else:
-                filename += "-" + str(self.files_exported + 1)
-                ExportVertexColors = True
-            
+                
+            if self.files_exported > 0:
+                filename += str(self.files_exported + 1)
             
             filename += ".x"
 
@@ -167,7 +183,7 @@ class ExportX(bpy.types.Operator):
                 )
             except:
                 print("Error during exporting to X")
-                self.report({'ERROR'}, "Error when saving DirectX file, check you have the DirectX addon enabled and your output path is correct!")
+                self.report({'ERROR'}, "Error when saving DirectX file, check the path!")
                 return False
             
             self.files_exported += 1
@@ -213,8 +229,6 @@ class Split(bpy.types.Operator):
             self.report({'ERROR'}, "No object selected!")
             return {'CANCELLED'}
         
-               
-         
         # only 1 selected object allowed
         if len(context.selected_objects) > 1:
             self.report({'ERROR'}, "Select single object")
@@ -345,17 +359,33 @@ class Split(bpy.types.Operator):
             # elif delta_bounds.z > delta_bounds.x:
                 # longest = delta_bounds.z
                 
-            # return longest
-            if props.max_length == 0:
+            # scenery
+            
+            if props.export_mesh_type == "scenery":
                 return False
-            if delta_bounds.x > props.max_length or delta_bounds.y > props.max_length or delta_bounds.z > props.max_length:
+            
+            if props.export_mesh_type == "general":
+                max_length = GENERAL_MAX_LENGTH
+            
+            if props.export_mesh_type == "collision":
+                return False
+            
+            if delta_bounds.x > max_length or delta_bounds.y > max_length or delta_bounds.z > max_length:
                 return True
         
         def is_too_dense ( obj ):
-            if  props.max_vertices == 0:
+        
+            
+            if props.export_mesh_type == "scenery":
+                max_vertices = SCENERY_MAX_VERTICES
+            
+            if props.export_mesh_type == "general":
+                max_vertices = GENERAL_MAX_VERTICES
+                
+            if props.export_mesh_type == "collision":
                 return False
             
-            if len(obj.data.vertices) >=  props.max_vertices:
+            if len(obj.data.vertices) >=  max_vertices:
                 return True
             
             return False
@@ -438,27 +468,30 @@ class ExportForRBR_Panel(bpy.types.Panel):
 
     def draw(self, context):
         layout =  self.layout
-        layout.label("Splitting Options:", icon="MOD_DECIM")
         
-        box = layout.box()
-        row = box.row(align=True)
-        row.prop(context.scene.export_for_rbr_props, "max_vertices", text="Vertex Count")
-        row.prop(context.scene.export_for_rbr_props, "max_length", text="Length")
+        # if context.scene.export_for_rbr_props.export_mesh_type == "general":
+            # layout.label("Splitting Options:", icon="MOD_DECIM")
+            
+            # box = layout.box()
+            # row = box.row(align=True)
+            
+            # row.prop(context.scene.export_for_rbr_props, "max_vertices", text="Vertex Count")
+            # row.prop(context.scene.export_for_rbr_props, "max_length", text="Length")
 
-        layout.row().separator()
+            # layout.row().separator()
 
         layout.label("Cleanup Options:", icon="SCRIPT")
 
         box = layout.box()
         
-        row = box.row()
-        row.prop(context.scene.export_for_rbr_props, "apply_transformations", text="Apply Transformation")
+        #row = box.row()
+        #row.prop(context.scene.export_for_rbr_props, "apply_transformations", text="Apply Transformation")
 
-        row = box.row()
-        row.prop(context.scene.export_for_rbr_props, "separate_by_material", text="Separate by Material")
+        #row = box.row()
+        #row.prop(context.scene.export_for_rbr_props, "separate_by_material", text="Separate by Material")
 
-        row = box.row()
-        row.prop(context.scene.export_for_rbr_props, "delete_loose", text="Delete Loose")
+        #row = box.row()
+        #row.prop(context.scene.export_for_rbr_props, "delete_loose", text="Delete Loose")
         
         row = box.row()
         row.prop(context.scene.export_for_rbr_props, "remove_doubles", text="Remove Doubles")
@@ -477,13 +510,20 @@ class ExportForRBR_Panel(bpy.types.Panel):
         row.prop(context.scene.export_for_rbr_props, "export_mesh_type", text="Mesh Type")
 
 
-        if context.scene.export_for_rbr_props.export_mesh_type == "0":
-            row = box.row()
-            row.label("Vertex Count per File:")
-            row.prop(context.scene.export_for_rbr_props, "max_vertices_x", text="")
+        # if context.scene.export_for_rbr_props.export_mesh_type == "general":
+            # row = box.row()
+            # row.label("Vertex Count per File:")
+            # row.prop(context.scene.export_for_rbr_props, "max_vertices_x", text="")
         
         row = box.row()
-        row.prop(context.scene.export_for_rbr_props, "export_basename", text="File Name")
+        if context.scene.export_for_rbr_props.export_mesh_type == "general":
+            row.prop(context.scene.export_for_rbr_props, "export_basename_general", text="File Name")
+        
+        if context.scene.export_for_rbr_props.export_mesh_type == "collision":
+            row.prop(context.scene.export_for_rbr_props, "export_basename_collision", text="File Name")
+            
+        if context.scene.export_for_rbr_props.export_mesh_type == "scenery":
+            row.prop(context.scene.export_for_rbr_props, "export_basename_scenery", text="File Name")
 
         row = box.row()
         row.prop(context.scene.export_for_rbr_props, "export_path", text="Output Folder")
@@ -495,18 +535,13 @@ class ExportForRBR_Panel(bpy.types.Panel):
         row = layout.row()
         row.scale_y = 2.0
 
-        if context.scene.export_for_rbr_props.export_mesh_type == "0":
-
-            row.operator("object.split_export_rbr", icon="AUTO")
-            
-            row = layout.row(align=True)
-            row.operator("object.split_for_rbr", icon="MOD_DECIM")
+        if context.scene.export_for_rbr_props.export_mesh_type == "collision":
+            row.operator("object.export_x_rbr", icon="EXPORT")
+            #row = layout.row(align=True)
+            #row.operator("object.split_for_rbr", icon="MOD_DECIM")
         
-            row.operator("object.export_x_rbr", icon="EXPORT")
-
-        elif context.scene.export_for_rbr_props.export_mesh_type == "1":
-
-            row.operator("object.export_x_rbr", icon="EXPORT")
+        else:
+            row.operator("object.split_export_rbr", icon="AUTO")
             
 
 
@@ -553,7 +588,7 @@ class ExportForRBR_Properties(PropertyGroup):
         description="Maximum vertices per one DirectX file (to keep the filesize below the limit for imported .x into RBR editor)"
     )
     export_mesh_type = EnumProperty(
-        items = (('0','General & Ground Mesh','', "WORLD_DATA", 0),('1','Collision Mesh','', "WIRE", 1)),
+        items = (('general','General & Ground Mesh','', "EDITMODE_HLT", 0),('collision','Collision Mesh','', "WIRE", 1),('scenery','Scenery','', "WORLD_DATA", 2)),
         name="RBR Mesh Type",
         description = "Type of the exported mesh - general & ground mesh will be rotated & mirrored, so it imports correctly into RBR editor\n"
     )
@@ -564,37 +599,50 @@ class ExportForRBR_Properties(PropertyGroup):
         maxlen=2048,
         subtype='DIR_PATH'
     )
-    export_basename = StringProperty(
+    export_basename_general = StringProperty(
         name="",
-        description="Base name for exported DirectX files",
+        default = "mesh",
+        description="File name for exported DirectX files",
+        maxlen=1024
+    )
+    export_basename_collision = StringProperty(
+        name="",
+        default = "collision",
+        description="File name for exported DirectX files",
+        maxlen=1024
+    )
+    export_basename_scenery = StringProperty(
+        name="",
+        default = "scenery",
+        description="File name for exported DirectX files",
         maxlen=1024
     )
     
-def getDefaultExportBaseName():
-    try:
-        export_basename = bpy.path.display_name_from_filepath(bpy.data.filepath)
-    except:
-        export_basename == ""
+# def getDefaultExportBaseName():
+    # try:
+        # export_basename = bpy.path.display_name_from_filepath(bpy.data.filepath)
+    # except:
+        # export_basename == ""
         
-    if export_basename == "":
-        export_basename = "export"
+    # if export_basename == "":
+        # export_basename = "export"
     
-    return export_basename
+    # return export_basename
 
-@persistent
-def on_scene_update(scene):
-    if scene.export_for_rbr_props.export_basename == "":
-        scene.export_for_rbr_props.export_basename = getDefaultExportBaseName()
+#@persistent
+#def on_scene_update(scene):
+#   if scene.export_for_rbr_props.export_basename == "":
+#        scene.export_for_rbr_props.export_basename = getDefaultExportBaseName()
     
 
 def register():
     bpy.utils.register_module(__name__)
     bpy.types.Scene.export_for_rbr_props = PointerProperty(type=ExportForRBR_Properties)
-    bpy.app.handlers.scene_update_pre.append(on_scene_update)
+    #bpy.app.handlers.scene_update_pre.append(on_scene_update)
 
 
 def unregister():
-    bpy.app.handlers.scene_update_pre.remove(on_scene_update)
+    #bpy.app.handlers.scene_update_pre.remove(on_scene_update)
     bpy.utils.unregister_module(__name__)
     del bpy.types.Scene.export_for_rbr_props
 
