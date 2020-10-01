@@ -32,13 +32,15 @@ from bpy.types import (Panel,
                          )
 from bpy.app.handlers import persistent
 
-SCENERY_MAX_VERTICES = 7000
-SCENERY_MAX_VERTICES_X = 7000
-SCENERY_MAX_LENGTH = 0
 
 GENERAL_MAX_VERTICES = 25000
 GENERAL_MAX_VERTICES_X = 400000
 GENERAL_MAX_LENGTH = 300
+
+SCENERY_MAX_VERTICES = 7000
+SCENERY_MAX_VERTICES_X = 7000
+SCENERY_MAX_LENGTH = 0
+
 
 class SplitAndExport(bpy.types.Operator):
 
@@ -207,7 +209,8 @@ class ExportX(bpy.types.Operator):
         bpy.ops.object.scale_clear()
 
         print( "\n==========================")
-        print("COMPLETE - files exported: " + str(self.files_exported))
+        print("COMPLETE - exported files: " + str(self.files_exported))
+        self.report({'INFO'}, "exported files: " + str(self.files_exported))
         print( "==========================")
         # self.report({'INFO'}, "Files Exported: " + str(self.files_exported))
 
@@ -223,8 +226,12 @@ class Split(bpy.types.Operator):
     bl_description = "Split selected objects"
     bl_options = {'REGISTER', 'UNDO'}
     
+    props = None
+    
     def execute(self, context):
 
+        self.props = context.scene.export_for_rbr_props
+        
         if len(context.selected_objects) == 0:
             self.report({'ERROR'}, "No object selected!")
             return {'CANCELLED'}
@@ -239,9 +246,9 @@ class Split(bpy.types.Operator):
             self.report({'ERROR'}, "Apply modifiers first")
             return {'CANCELLED'}
     
-        props = context.scene.export_for_rbr_props
         
         def cut_object( obj ):
+        
             #Gets the bounds
             bounds = [b[:] for b in obj.bound_box]
             #0 is the min
@@ -283,7 +290,7 @@ class Split(bpy.types.Operator):
             
             if selected_verts_count == len(obj.data.vertices):
             
-                print("Skipping select linked as whole mesh is linked ...")
+                #print("Skipping select linked as whole mesh is linked ...")
                 bpy.ops.mesh.select_all(action = 'DESELECT')
                 bpy.ops.object.mode_set(mode = 'OBJECT')
                 
@@ -361,28 +368,27 @@ class Split(bpy.types.Operator):
                 
             # scenery
             
-            if props.export_mesh_type == "scenery":
+            if self.props.export_mesh_type == "scenery":
                 return False
             
-            if props.export_mesh_type == "general":
+            if self.props.export_mesh_type == "general":
                 max_length = GENERAL_MAX_LENGTH
             
-            if props.export_mesh_type == "collision":
+            if self.props.export_mesh_type == "collision":
                 return False
             
             if delta_bounds.x > max_length or delta_bounds.y > max_length or delta_bounds.z > max_length:
                 return True
         
         def is_too_dense ( obj ):
-        
             
-            if props.export_mesh_type == "scenery":
+            if self.props.export_mesh_type == "scenery":
                 max_vertices = SCENERY_MAX_VERTICES
             
-            if props.export_mesh_type == "general":
+            if self.props.export_mesh_type == "general":
                 max_vertices = GENERAL_MAX_VERTICES
                 
-            if props.export_mesh_type == "collision":
+            if self.props.export_mesh_type == "collision":
                 return False
             
             if len(obj.data.vertices) >=  max_vertices:
@@ -391,6 +397,30 @@ class Split(bpy.types.Operator):
             return False
             
         
+        def pre_split_check():
+            
+            if self.props.export_mesh_type == "general":
+                
+                for obj in bpy.context.selected_objects:
+                    OWMatrix = obj.matrix_world
+                    
+                    for e in obj.data.edges:
+                        v0 = e.vertices[0]
+                        v1 = e.vertices[1]
+                        v0Pos = OWMatrix * obj.data.vertices[v0].co
+                        v1Pos = OWMatrix * obj.data.vertices[v1].co
+                        edgeLength = (v0Pos - v1Pos).length
+                        
+                        if edgeLength > GENERAL_MAX_LENGTH:
+                            print( "\nERROR: TOO LARGE POLYGONS to split (maximum is " +  str(GENERAL_MAX_LENGTH) + ")")
+                            self.report({'ERROR'}, "Too large polygons - maximum is " +  str(GENERAL_MAX_LENGTH))
+                            return False
+                        
+            return True
+
+        if pre_split_check() == False:
+            return {'CANCELLED'}
+            
         start_time = time.time()
         
         
@@ -403,17 +433,17 @@ class Split(bpy.types.Operator):
 
             bpy.context.scene.objects.active = obj
 
-            if props.apply_transformations:
+            if self.props.apply_transformations:
                 bpy.ops.object.transform_apply(location = True, scale = True, rotation = True)
             
             bpy.ops.object.mode_set(mode="EDIT")
             bpy.ops.mesh.reveal()
             bpy.ops.mesh.select_all(action = 'SELECT')
 
-            if props.remove_doubles:
-                bpy.ops.mesh.remove_doubles(threshold = props.remove_doubles_threshold, use_unselected = True)
+            if self.props.remove_doubles:
+                bpy.ops.mesh.remove_doubles(threshold = self.props.remove_doubles_threshold, use_unselected = True)
             
-            if props.delete_loose:
+            if self.props.delete_loose:
                 bpy.ops.mesh.delete_loose()
                     
             bpy.ops.mesh.select_all(action = 'DESELECT')
@@ -421,7 +451,7 @@ class Split(bpy.types.Operator):
             
             obj.update_from_editmode()
         
-            if props.separate_by_material:
+            if self.props.separate_by_material:
                 print("\nSeparating by material ...")
                 bpy.ops.mesh.separate(type='MATERIAL')
         
@@ -429,6 +459,7 @@ class Split(bpy.types.Operator):
         
         print( "\nSPLITTING")
         print( "=====================")
+                
         iteration = 0
         chunks_to_process = 0
         found = True
@@ -438,17 +469,21 @@ class Split(bpy.types.Operator):
             found = False
             chunks_to_process = 0
 
-            #Get all objects that have more than the wanted vertex amount
+            #Get all objects that needs to be split
             for obj in [x for x in bpy.context.selected_objects if is_too_dense(x) or is_too_long(x)]:
                 chunks_to_process += 1
                 if cut_object( obj ):
                     found = True
+                        
             iteration += 1            
             print( "Iteration: " + str( iteration ) + "   Objects: " + str( len( bpy.context.selected_objects ) ) )
-
+                    
         print( "\n==========================")
         print("SPLITTING FINISHED in: " + str( time.time() - start_time ) )
-        print("\nImperfect chunks: " + str(chunks_to_process))
+        print( "OBJECTS: " + str( len( bpy.context.selected_objects ) ) )
+        
+        if chunks_to_process > 0:
+            print("\nImperfect chunks: " + str(chunks_to_process) + " - polygons too large?")
 
         print( "==========================\n")
         
@@ -468,6 +503,7 @@ class ExportForRBR_Panel(bpy.types.Panel):
 
     def draw(self, context):
         layout =  self.layout
+        props = context.scene.export_for_rbr_props
         
         # if context.scene.export_for_rbr_props.export_mesh_type == "general":
             # layout.label("Splitting Options:", icon="MOD_DECIM")
@@ -494,10 +530,10 @@ class ExportForRBR_Panel(bpy.types.Panel):
         #row.prop(context.scene.export_for_rbr_props, "delete_loose", text="Delete Loose")
         
         row = box.row()
-        row.prop(context.scene.export_for_rbr_props, "remove_doubles", text="Remove Doubles")
+        row.prop(props, "remove_doubles", text="Remove Doubles")
         
-        if context.scene.export_for_rbr_props.remove_doubles:
-            row.prop(context.scene.export_for_rbr_props, "remove_doubles_threshold", text="Distance", slider=True)
+        if props.remove_doubles:
+            row.prop(props, "remove_doubles_threshold", text="Distance", slider=True)
         
 
         layout.row().separator()
@@ -507,7 +543,7 @@ class ExportForRBR_Panel(bpy.types.Panel):
 
         box = layout.box()
         row = box.row()
-        row.prop(context.scene.export_for_rbr_props, "export_mesh_type", text="Mesh Type")
+        row.prop(props, "export_mesh_type", text="Mesh Type")
 
 
         # if context.scene.export_for_rbr_props.export_mesh_type == "general":
@@ -516,17 +552,17 @@ class ExportForRBR_Panel(bpy.types.Panel):
             # row.prop(context.scene.export_for_rbr_props, "max_vertices_x", text="")
         
         row = box.row()
-        if context.scene.export_for_rbr_props.export_mesh_type == "general":
-            row.prop(context.scene.export_for_rbr_props, "export_basename_general", text="File Name")
+        if props.export_mesh_type == "general":
+            row.prop(props, "export_basename_general", text="File Name")
         
-        if context.scene.export_for_rbr_props.export_mesh_type == "collision":
-            row.prop(context.scene.export_for_rbr_props, "export_basename_collision", text="File Name")
+        if props.export_mesh_type == "collision":
+            row.prop(props, "export_basename_collision", text="File Name")
             
-        if context.scene.export_for_rbr_props.export_mesh_type == "scenery":
-            row.prop(context.scene.export_for_rbr_props, "export_basename_scenery", text="File Name")
+        if props.export_mesh_type == "scenery":
+            row.prop(props, "export_basename_scenery", text="File Name")
 
         row = box.row()
-        row.prop(context.scene.export_for_rbr_props, "export_path", text="Output Folder")
+        row.prop(props, "export_path", text="Output Folder")
         
 
         layout.row().separator()
@@ -535,7 +571,7 @@ class ExportForRBR_Panel(bpy.types.Panel):
         row = layout.row()
         row.scale_y = 2.0
 
-        if context.scene.export_for_rbr_props.export_mesh_type == "collision":
+        if props.export_mesh_type == "collision":
             row.operator("object.export_x_rbr", icon="EXPORT")
             #row = layout.row(align=True)
             #row.operator("object.split_for_rbr", icon="MOD_DECIM")
