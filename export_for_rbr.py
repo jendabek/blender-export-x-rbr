@@ -33,9 +33,9 @@ from bpy.types import (Panel,
 from bpy.app.handlers import persistent
 
 
-GENERAL_MAX_VERTICES = 25000
-GENERAL_MAX_VERTICES_X = 400000
-GENERAL_MAX_LENGTH = 300
+DEFAULT_GENERAL_MAX_VERTICES = 10000 #25000
+DEFAULT_GENERAL_MAX_VERTICES_X = 300000 #400000
+DEFAULT_GENERAL_MAX_LENGTH = 250 #300
 
 SCENERY_MAX_VERTICES = 7000
 SCENERY_MAX_VERTICES_X = 7000
@@ -126,10 +126,10 @@ class ExportX(bpy.types.Operator):
                     if vertex_count <= SCENERY_MAX_VERTICES_X:
                         obj.select = True
                 else:
-                    if self.props.export_mesh_type == "collision" or vertex_count < GENERAL_MAX_VERTICES_X or obj == self.objects_to_export[-1]:
+                    if self.props.export_mesh_type == "collision" or vertex_count < self.props.max_vertices_x or obj == self.objects_to_export[-1]:
                         obj.select = True
                 
-            # Transform for General mesh & Ground
+            # Transform for General mesh & Ground & Movables
             if self.props.export_mesh_type == "general" or self.props.export_mesh_type == "scenery":
                 bpy.ops.transform.mirror(
                     constraint_axis=(False, False, True),
@@ -372,7 +372,7 @@ class Split(bpy.types.Operator):
                 return False
             
             if self.props.export_mesh_type == "general":
-                max_length = GENERAL_MAX_LENGTH
+                max_length = self.props.max_length
             
             if self.props.export_mesh_type == "collision":
                 return False
@@ -386,7 +386,7 @@ class Split(bpy.types.Operator):
                 max_vertices = SCENERY_MAX_VERTICES
             
             if self.props.export_mesh_type == "general":
-                max_vertices = GENERAL_MAX_VERTICES
+                max_vertices = self.props.max_vertices
                 
             if self.props.export_mesh_type == "collision":
                 return False
@@ -411,9 +411,9 @@ class Split(bpy.types.Operator):
                         v1Pos = OWMatrix * obj.data.vertices[v1].co
                         edgeLength = (v0Pos - v1Pos).length
                         
-                        if edgeLength > GENERAL_MAX_LENGTH:
-                            print( "\nERROR: TOO LARGE POLYGONS to split (maximum is " +  str(GENERAL_MAX_LENGTH) + ")")
-                            self.report({'ERROR'}, "Too large polygons - maximum is " +  str(GENERAL_MAX_LENGTH))
+                        if edgeLength > self.props.max_length:
+                            print( "\nERROR: TOO LARGE POLYGONS to split (maximum is " +  str(self.props.max_length) + ")")
+                            self.report({'ERROR'}, "Too large polygons - maximum is " +  str(self.props.max_length))
                             return False
                         
             return True
@@ -505,29 +505,29 @@ class ExportForRBR_Panel(bpy.types.Panel):
         layout =  self.layout
         props = context.scene.export_for_rbr_props
         
-        # if context.scene.export_for_rbr_props.export_mesh_type == "general":
-            # layout.label("Splitting Options:", icon="MOD_DECIM")
+        if props.export_mesh_type == "general":
+            layout.label("Splitting Options:", icon="MOD_DECIM")
             
-            # box = layout.box()
-            # row = box.row(align=True)
+            box = layout.box()
+            row = box.row(align=True)
             
-            # row.prop(context.scene.export_for_rbr_props, "max_vertices", text="Vertex Count")
-            # row.prop(context.scene.export_for_rbr_props, "max_length", text="Length")
+            row.prop(props, "max_vertices", text="Vertex Count")
+            row.prop(props, "max_length", text="Length")
 
-            # layout.row().separator()
+            layout.row().separator()
 
         layout.label("Cleanup Options:", icon="SCRIPT")
 
         box = layout.box()
         
-        #row = box.row()
-        #row.prop(context.scene.export_for_rbr_props, "apply_transformations", text="Apply Transformation")
+        row = box.row()
+        row.prop(props, "apply_transformations", text="Apply Transformation")
 
-        #row = box.row()
-        #row.prop(context.scene.export_for_rbr_props, "separate_by_material", text="Separate by Material")
+        row = box.row()
+        row.prop(props, "separate_by_material", text="Separate by Material")
 
-        #row = box.row()
-        #row.prop(context.scene.export_for_rbr_props, "delete_loose", text="Delete Loose")
+        row = box.row()
+        row.prop(props, "delete_loose", text="Delete Loose")
         
         row = box.row()
         row.prop(props, "remove_doubles", text="Remove Doubles")
@@ -546,10 +546,10 @@ class ExportForRBR_Panel(bpy.types.Panel):
         row.prop(props, "export_mesh_type", text="Mesh Type")
 
 
-        # if context.scene.export_for_rbr_props.export_mesh_type == "general":
-            # row = box.row()
-            # row.label("Vertex Count per File:")
-            # row.prop(context.scene.export_for_rbr_props, "max_vertices_x", text="")
+        if props.export_mesh_type == "general":
+            row = box.row()
+            row.label("Vertex Count per File:")
+            row.prop(props, "max_vertices_x", text="")
         
         row = box.row()
         if props.export_mesh_type == "general":
@@ -573,8 +573,8 @@ class ExportForRBR_Panel(bpy.types.Panel):
 
         if props.export_mesh_type == "collision":
             row.operator("object.export_x_rbr", icon="EXPORT")
-            #row = layout.row(align=True)
-            #row.operator("object.split_for_rbr", icon="MOD_DECIM")
+            row = layout.row(align=True)
+            row.operator("object.split_for_rbr", icon="MOD_DECIM")
         
         else:
             row.operator("object.split_export_rbr", icon="AUTO")
@@ -605,12 +605,12 @@ class ExportForRBR_Properties(PropertyGroup):
     )
     max_vertices = IntProperty(
         min=0,
-        default=25000,
+        default=DEFAULT_GENERAL_MAX_VERTICES,
         description="Maximum vertices per chunk - RBR editor can only import files with meshes consisting of < 30 000 vertices"
     )
     max_length = FloatProperty(
         min=0,
-        default=200,
+        default=DEFAULT_GENERAL_MAX_LENGTH,
         unit='LENGTH',
         description="Meshes will be splitted if they are longer than the given distance (usually 200-500m is fine for RBR).\n(Too long meshes won't display in game)"
     )
@@ -620,11 +620,11 @@ class ExportForRBR_Properties(PropertyGroup):
     )
     max_vertices_x = IntProperty(
         min=0,
-        default=400000,
+        default=DEFAULT_GENERAL_MAX_VERTICES_X,
         description="Maximum vertices per one DirectX file (to keep the filesize below the limit for imported .x into RBR editor)"
     )
     export_mesh_type = EnumProperty(
-        items = (('general','General & Ground Mesh','', "EDITMODE_HLT", 0),('collision','Collision Mesh','', "WIRE", 1),('scenery','Scenery','', "WORLD_DATA", 2)),
+        items = (('general','General / Ground / Movables','', "EDITMODE_HLT", 0),('collision','Ground Collision','', "MESH_GRID", 1),('scenery','Scenery / Clipping Planes','', "WORLD_DATA", 2)),
         name="RBR Mesh Type",
         description = "Type of the exported mesh - general & ground mesh will be rotated & mirrored, so it imports correctly into RBR editor\n"
     )
