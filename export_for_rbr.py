@@ -14,6 +14,7 @@ import bpy
 import bmesh
 import time
 import os
+import struct
 from mathutils import Vector
 from math import radians
 
@@ -489,6 +490,171 @@ class Split(bpy.types.Operator):
         
         return {'FINISHED'}
         
+
+class ExportCMS(bpy.types.Operator):
+
+    bl_idname = "object.export_cms"
+    bl_label = "Export CMS"
+    bl_description = "Export selected objects to CMS file"
+    bl_options = {'REGISTER', 'UNDO'}
+
+    files_exported = 0
+    objects_to_export = None
+    props = None
+    
+    def execute(self, context):
+
+        self.props = context.scene.export_for_rbr_props
+        self.objects_to_export = context.selected_objects
+        self.files_exported = 0
+
+        if len(context.selected_objects) == 0:
+            self.report({'ERROR'}, "No object selected!")
+            return {'CANCELLED'}
+            
+        if len(context.selected_objects) > 1:
+            self.report({'ERROR'}, "Select only 1 object!")
+            return {'CANCELLED'}
+       
+        # no modifiers allowed
+        for obj in context.selected_objects:
+            if len(obj.modifiers) > 0:
+                self.report({'ERROR'}, "Apply modifiers first")
+                return {'CANCELLED'}
+                
+        eval("self.props.export_basename_" + self.props.export_mesh_type).strip()
+        if eval("self.props.export_basename_" + self.props.export_mesh_type) == "":
+            self.report({'ERROR'}, "Enter the name for the exported file")
+            return {'CANCELLED'}
+            
+        print( "\nEXPORTING TO CMS")
+        print( "=====================\n")
+
+        
+        def getView3D():
+            areas = {}                                                               
+            count = 0
+            for area in bpy.context.screen.areas:                                  
+                areas[area.type] = count                                             
+                count += 1
+
+            return bpy.context.screen.areas[areas['VIEW_3D']].spaces[0]
+        
+        
+        def export():
+
+           
+            ob_name = eval("self.props.export_basename_" + self.props.export_mesh_type)
+
+                
+            if self.files_exported > 0:
+                ob_name += str(self.files_exported + 1)
+            
+            filePath = os.path.join(bpy.path.abspath(self.props.export_path), ob_name + ".cms")
+            print(filePath)
+            
+            try:
+                obj = bpy.context.object
+                # Get the active mesh
+                me = bpy.context.object.data
+                # Get a BMesh representation
+                bm = bmesh.new()   # create an empty BMesh
+                bm.from_mesh(me)   # fill it in from a Mesh
+                bmesh.ops.triangulate(bm, faces=bm.faces[:])
+                bm.to_mesh(me)
+                
+                
+                # Modify the BMesh, can do anything here...
+                n_faces = 0
+                n_verts = 0
+
+                for f in me.polygons:
+                    n_faces += 1
+
+                for v in me.vertices:
+                    n_verts += 1
+
+                print('Name: {}'.format(ob_name))
+                print('Faces: {}'.format(n_faces))
+                print('Vertexes: {}'.format(n_verts))
+                #n_vert = []
+
+                # Write file
+                with open(filePath, 'wb') as file:
+                    file.write(ob_name.encode())
+
+                    file.write(struct.pack('B', 0))
+                    file.write(struct.pack('l', 0))
+                    file.write(struct.pack('B', 0))
+                    file.write(struct.pack('B', 0))
+                    file.write(struct.pack('l', 0))
+
+                    file.write(struct.pack('l', n_verts))
+
+                    print('start export...')
+
+                    for i, v in enumerate(bm.verts):
+                        print('{} {} {}'.format(v.co.x, v.co.y, v.co.z))
+
+                        data = struct.pack('f',v.co.x)
+                        file.write(data)
+                        data = struct.pack('f',v.co.y)
+                        file.write(data)
+                        data = struct.pack('f',v.co.z)
+                        file.write(data)
+
+                    print(n_faces)
+                    file.write(struct.pack('l', n_faces))
+
+                    for f in me.polygons:
+                        face1 = f.vertices[0]
+                        face2 = f.vertices[1]
+                        face3 = f.vertices[2]
+
+                        print('{} {} {}'.format(face2, face3, face1))
+                        file.write(struct.pack('B', 0))
+
+                        file.write(struct.pack('l', face1))
+                        file.write(struct.pack('l', face3))
+                        file.write(struct.pack('l', face2))
+
+                    file.write(struct.pack('l', 0))
+
+                    # close the file
+                    file.close()
+
+                # free and prevent further access
+                bm.free()
+            except Exception as e:
+                print("Error during exporting to CMS:" + str(e))
+                self.report({'ERROR'}, "Error when saving CMS file")
+                return False
+            
+            self.files_exported += 1
+
+            for obj in context.selected_objects:
+                self.objects_to_export.remove(obj)
+            
+            if self.objects_to_export:
+                export()
+                
+
+        view3d = getView3D()
+        view3d.pivot_point='BOUNDING_BOX_CENTER'
+
+
+        export()
+
+        print( "\n==========================")
+        print("COMPLETE - exported files: " + str(self.files_exported))
+        self.report({'INFO'}, "exported files: " + str(self.files_exported))
+        print( "==========================")
+        # self.report({'INFO'}, "Files Exported: " + str(self.files_exported))
+
+        # bpy.ops.object.select_all(action="DESELECT")
+
+        return {'FINISHED'}
+
 class ExportForRBR_Panel(bpy.types.Panel):
 
     bl_idname = "panel.export_for_rbr"
@@ -552,15 +718,8 @@ class ExportForRBR_Panel(bpy.types.Panel):
             row.prop(props, "max_vertices_x", text="")
         
         row = box.row()
-        if props.export_mesh_type == "general":
-            row.prop(props, "export_basename_general", text="File Name")
-        
-        if props.export_mesh_type == "collision":
-            row.prop(props, "export_basename_collision", text="File Name")
-            
-        if props.export_mesh_type == "scenery":
-            row.prop(props, "export_basename_scenery", text="File Name")
 
+        row.prop(props, "export_basename_" + props.export_mesh_type, text="File Name")
         row = box.row()
         row.prop(props, "export_path", text="Output Folder")
         
@@ -571,13 +730,20 @@ class ExportForRBR_Panel(bpy.types.Panel):
         row = layout.row()
         row.scale_y = 2.0
 
-        if props.export_mesh_type == "collision":
-            row.operator("object.export_x_rbr", icon="EXPORT")
-            row = layout.row(align=True)
-            row.operator("object.split_for_rbr", icon="MOD_DECIM")
         
-        else:
+        if props.export_mesh_type == "collision" or props.export_mesh_type == "scenery":
+            
+            row.operator("object.export_x_rbr", icon="EXPORT")
+            #row.operator("object.split_for_rbr", icon="MOD_DECIM")
+        
+        if props.export_mesh_type == "general":
+            row.operator("object.export_x_rbr", icon="EXPORT")
             row.operator("object.split_export_rbr", icon="AUTO")
+            
+        if props.export_mesh_type == "cms":
+            row.operator("object.export_cms", icon="EXPORT")
+            
+        row = layout.row(align=True)
             
 
 
@@ -624,7 +790,7 @@ class ExportForRBR_Properties(PropertyGroup):
         description="Maximum vertices per one DirectX file (to keep the filesize below the limit for imported .x into RBR editor)"
     )
     export_mesh_type = EnumProperty(
-        items = (('general','General / Ground / Movables','', "EDITMODE_HLT", 0),('collision','Ground Collision','', "MESH_GRID", 1),('scenery','Scenery / Clipping Planes','', "WORLD_DATA", 2)),
+        items = (('general','General / Ground / Movables','', "EDITMODE_HLT", 0),('collision','Ground Collision','', "MESH_GRID", 1),('cms','CMS Collision','', "MESH_ICOSPHERE", 2),('scenery','Scenery / Clipping Planes','', "WORLD_DATA", 3)),
         name="RBR Mesh Type",
         description = "Type of the exported mesh - general & ground mesh will be rotated & mirrored, so it imports correctly into RBR editor\n"
     )
@@ -651,6 +817,12 @@ class ExportForRBR_Properties(PropertyGroup):
         name="",
         default = "scenery",
         description="File name for exported DirectX files",
+        maxlen=1024
+    )
+    export_basename_cms = StringProperty(
+        name="",
+        default = "cms",
+        description="File name for exported CMS files",
         maxlen=1024
     )
     
