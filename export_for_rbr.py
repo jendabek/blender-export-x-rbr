@@ -3,7 +3,6 @@
 #TODO display status messages in the panel
 #TODO overall refactoring
 #TODO remember and display recent directories for export
-#TODO add scenery to the mesh type selection
 
 bl_info = {
     "name": "Export X for RBR",
@@ -154,7 +153,7 @@ class ExportX(bpy.types.Operator):
             
                 
             if self.files_exported > 0:
-                filename += str(self.files_exported + 1)
+                filename += "_" + str(self.files_exported + 1)
             
             filename += ".x"
 
@@ -372,7 +371,7 @@ class Split(bpy.types.Operator):
             if self.props.export_mesh_type == "scenery":
                 return False
             
-            if self.props.export_mesh_type == "general":
+            if self.props.export_mesh_type == "general" or self.props.export_mesh_type == "submesh":
                 max_length = self.props.max_length
             
             if self.props.export_mesh_type == "collision":
@@ -386,7 +385,7 @@ class Split(bpy.types.Operator):
             if self.props.export_mesh_type == "scenery":
                 max_vertices = SCENERY_MAX_VERTICES
             
-            if self.props.export_mesh_type == "general":
+            if self.props.export_mesh_type == "general" or self.props.export_mesh_type == "submesh":
                 max_vertices = self.props.max_vertices
                 
             if self.props.export_mesh_type == "collision":
@@ -400,7 +399,7 @@ class Split(bpy.types.Operator):
         
         def pre_split_check():
             
-            if self.props.export_mesh_type == "general":
+            if self.props.export_mesh_type == "general" or self.props.export_mesh_type == "submesh":
                 
                 for obj in bpy.context.selected_objects:
                     OWMatrix = obj.matrix_world
@@ -452,9 +451,9 @@ class Split(bpy.types.Operator):
             
             obj.update_from_editmode()
         
-            if self.props.separate_by_material:
-                print("\nSeparating by material ...")
-                bpy.ops.mesh.separate(type='MATERIAL')
+            # if self.props.separate_by_material:
+            print("\nSeparating by material ...")
+            bpy.ops.mesh.separate(type='MATERIAL')
         
         print("Done.")
         
@@ -671,7 +670,7 @@ class ExportForRBR_Panel(bpy.types.Panel):
         layout =  self.layout
         props = context.scene.export_for_rbr_props
         
-        if props.export_mesh_type == "general":
+        if props.export_mesh_type == "general" or props.export_mesh_type == "submesh":
             layout.label("Splitting Options:", icon="MOD_DECIM")
             
             box = layout.box()
@@ -688,9 +687,6 @@ class ExportForRBR_Panel(bpy.types.Panel):
         
         row = box.row()
         row.prop(props, "apply_transformations", text="Apply Transformation")
-
-        row = box.row()
-        row.prop(props, "separate_by_material", text="Separate by Material")
 
         row = box.row()
         row.prop(props, "delete_loose", text="Delete Loose")
@@ -712,7 +708,7 @@ class ExportForRBR_Panel(bpy.types.Panel):
         row.prop(props, "export_mesh_type", text="Mesh Type")
 
 
-        if props.export_mesh_type == "general":
+        if props.export_mesh_type == "general" or props.export_mesh_type == "submesh":
             row = box.row()
             row.label("Vertex Count per File:")
             row.prop(props, "max_vertices_x", text="")
@@ -736,7 +732,7 @@ class ExportForRBR_Panel(bpy.types.Panel):
             row.operator("object.export_x_rbr", icon="EXPORT")
             #row.operator("object.split_for_rbr", icon="MOD_DECIM")
         
-        if props.export_mesh_type == "general":
+        if props.export_mesh_type == "general" or props.export_mesh_type == "submesh":
             row.operator("object.export_x_rbr", icon="EXPORT")
             row.operator("object.split_export_rbr", icon="AUTO")
             
@@ -780,17 +776,21 @@ class ExportForRBR_Properties(PropertyGroup):
         unit='LENGTH',
         description="Meshes will be splitted if they are longer than the given distance (usually 200-500m is fine for RBR).\n(Too long meshes won't display in game)"
     )
-    separate_by_material = BoolProperty(
-        default=True,
-        description="Splits the selected meshes by material - no reason to uncheck it as RBR can work only with 1 material per object"
-    )
+    # separate_by_material = BoolProperty(
+        # default=True,
+        # description="Splits the selected meshes by material - no reason to uncheck it as RBR can work only with 1 material per object"
+    # )
     max_vertices_x = IntProperty(
         min=0,
         default=DEFAULT_GENERAL_MAX_VERTICES_X,
         description="Maximum vertices per one DirectX file (to keep the filesize below the limit for imported .x into RBR editor)"
     )
     export_mesh_type = EnumProperty(
-        items = (('general','General / Ground / Movables','', "EDITMODE_HLT", 0),('collision','Ground Collision','', "MESH_GRID", 1),('cms','CMS Collision','', "MESH_ICOSPHERE", 2),('scenery','Scenery / Clipping Planes','', "WORLD_DATA", 3)),
+        items = (('general','General / Ground / Movables','', "GROUP", 0),
+        ('collision','Ground Collision','', "OUTLINER_OB_LATTICE", 1),
+        ('cms','CMS Collision','', "MESH_ICOSPHERE", 2),
+        ('scenery','Scenery / Clipping Planes','', "WORLD_DATA", 3),
+        ('submesh','Movable Submesh','', "ROTATECENTER", 4)),
         name="RBR Mesh Type",
         description = "Type of the exported mesh - general & ground mesh will be rotated & mirrored, so it imports correctly into RBR editor\n"
     )
@@ -825,7 +825,12 @@ class ExportForRBR_Properties(PropertyGroup):
         description="File name for exported CMS files",
         maxlen=1024
     )
-    
+    export_basename_submesh = StringProperty(
+        name="",
+        default = "submesh",
+        description="File name for exported DirectX files",
+        maxlen=1024
+    )
 # def getDefaultExportBaseName():
     # try:
         # export_basename = bpy.path.display_name_from_filepath(bpy.data.filepath)
